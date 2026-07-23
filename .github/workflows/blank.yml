@@ -1,36 +1,103 @@
-# This is a basic workflow to help you get started with Actions
+name: Build Android APK
 
-name: CI
-
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-
-  # Allows you to run this workflow manually from the Actions tab
+    branches: [ main ]
   workflow_dispatch:
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
   build:
-    # The type of runner that the job will run on
     runs-on: ubuntu-latest
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
+      - name: Generate App Files Automatically
         run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+          # Create pyproject.toml
+          cat << 'EOF' > pyproject.toml
+          [project]
+          name = "fibonacci_app"
+          version = "1.0.0"
+          dependencies = [
+              "flet>=0.20.0",
+              "requests"
+          ]
+
+          [tool.flet.app]
+          path = "main.py"
+          EOF
+
+          # Create main.py (Live XAUUSD Fibonacci Matrix App)
+          cat << 'EOF' > main.py
+          import flet as ft
+          import requests
+
+          def main(page: ft.Page):
+              page.title = "Live Fibonacci Grid Matrix"
+              page.theme_mode = ft.ThemeMode.DARK
+              page.vertical_alignment = ft.MainAxisAlignment.CENTER
+              page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+
+              symbol_text = ft.Text("Symbol: XAUUSD", size=20, weight=ft.FontWeight.BOLD)
+              ask_text = ft.Text("Live Ask: Loading...", size=24, color=ft.colors.GREEN_ACCENT, weight=ft.FontWeight.BOLD)
+              ath_text = ft.Text("All-Time High: Loading...", size=16)
+              grid_column = ft.Column(scroll=ft.ScrollMode.AUTO, spacing=10)
+
+              def fetch_and_calculate(e=None):
+                  try:
+                      response = requests.get("https://api.coinbase.com/v2/prices/XAU-USD/spot", timeout=5)
+                      data = response.json()
+                      current_ask = float(data['data']['amount'])
+                      all_time_high = current_ask * 1.15 
+
+                      ask_text.value = f"Live Ask: {current_ask:.2f}"
+                      ath_text.value = f"All-Time High Reference: {all_time_high:.2f}"
+
+                      fib_ratios = [0.0, 0.236, 0.382, 0.50, 0.618, 1.0]
+                      price_span = all_time_high - current_ask
+                      
+                      grid_column.controls.clear()
+                      for i, ratio in enumerate(fib_ratios):
+                          layer_price = all_time_high - (price_span * ratio)
+                          bg_color = ft.colors.GREEN_900 if i % 2 == 0 else ft.colors.RED_900
+                          
+                          block = ft.Container(
+                              content=ft.Text(f"Layer {i}: {layer_price:.2f}", size=16, weight=ft.FontWeight.BOLD),
+                              bgcolor=bg_color,
+                              padding=15,
+                              border_radius=8,
+                              alignment=ft.alignment.center
+                          )
+                          grid_column.controls.append(block)
+                      page.update()
+                  except Exception as ex:
+                      ask_text.value = "Error fetching live data"
+                      page.update()
+
+              refresh_btn = ft.ElevatedButton("Refresh Matrix", on_click=fetch_and_calculate)
+              page.add(symbol_text, ask_text, ath_text, ft.Divider(), refresh_btn, ft.Container(height=20), grid_column)
+              fetch_and_calculate()
+
+          ft.app(target=main)
+          EOF
+
+      - name: Install Flet and dependencies
+        run: |
+          pip install --upgrade pip
+          pip install flet requests
+
+      - name: Build Android APK
+        run: |
+          flet build apk --yes --verbose
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: build/apk/app-release.apk
