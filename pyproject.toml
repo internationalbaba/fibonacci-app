@@ -1,0 +1,10 @@
+[project]
+name = "fibonacci_app"
+version = "1.0.0"
+dependencies = [
+    "flet>=0.20.0",
+    "requests"
+]
+
+[tool.flet.app]
+path = "main.py"
